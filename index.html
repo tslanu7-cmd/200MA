@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>200주선 스캐너</title>
+<style>
+:root{--bg:#f6f7f9;--ink:#1b2430;--mute:#6b7787;--line:#dde2e8;--card:#fff;--below:#b42318;--near:#b86e00;--acc:#0f766e}
+@media (prefers-color-scheme:dark){:root{--bg:#12161c;--ink:#e6eaf0;--mute:#8f9bab;--line:#2a323d;--card:#1a2029;--below:#f97066;--near:#f5b041;--acc:#2dd4bf}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;padding:max(16px,env(safe-area-inset-top)) 16px 40px}
+main{max-width:760px;margin:0 auto}h1{font-size:22px;margin:8px 0 2px}.sub{color:var(--mute);font-size:13px;margin:0 0 16px}
+.ctl{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px;display:grid;gap:10px}
+.tabs{display:flex;gap:6px}.tabs button{flex:1;padding:8px;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:6px;font:inherit;cursor:pointer}
+.tabs button[aria-pressed=true]{background:var(--acc);border-color:var(--acc);color:#fff}
+label{display:flex;align-items:center;gap:10px;font-size:14px}input[type=range]{flex:1;accent-color:var(--acc)}
+input[type=search]{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font:inherit}
+.count{color:var(--mute);font-size:13px;margin:14px 2px 6px}
+.wrap{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:8px}
+table{width:100%;border-collapse:collapse;min-width:420px}th,td{padding:9px 12px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:12px;color:var(--mute);font-weight:600;cursor:pointer;user-select:none}th:first-child,td:first-child{text-align:left}
+tr:last-child td{border-bottom:0}td small{display:block;color:var(--mute);font-size:12px}
+.below{color:var(--below);font-weight:600}.near{color:var(--near);font-weight:600}
+.empty{padding:28px 16px;text-align:center;color:var(--mute)}button:focus-visible,input:focus-visible,th:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+</style></head><body><main>
+<h1>200주 이동평균 스캐너</h1>
+<p class="sub" id="upd">데이터 불러오는 중…</p>
+<div class="ctl">
+ <div class="tabs"><button data-m="KR" aria-pressed="true">한국 시총 200</button><button data-m="US" aria-pressed="false">미국 시총 500</button></div>
+ <label>근접 기준 <input type="range" id="th" min="0" max="30" step="0.5" value="5"> <b id="thv">5%</b></label>
+ <input type="search" id="q" placeholder="종목명 또는 티커 검색">
+</div>
+<div class="count" id="cnt"></div>
+<div class="wrap"><table><thead><tr>
+ <th data-k="name" tabindex="0">종목</th><th data-k="price" tabindex="0">현재가</th><th data-k="ma200" tabindex="0">200주선</th><th data-k="gap" tabindex="0">괴리율 ▲</th>
+</tr></thead><tbody id="tb"></tbody></table></div>
+</main>
+<script>
+let D=null,mk="KR",key="gap",dir=1;
+const $=id=>document.getElementById(id);
+const fmt=(v,m)=>m==="KR"?Math.round(v).toLocaleString("ko-KR")+"원":"$"+v.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
+function render(){
+  if(!D)return;
+  const th=+$("th").value,q=$("q").value.trim().toLowerCase();
+  $("thv").textContent=th+"%";
+  const all=D.rows.filter(r=>r.market===mk);
+  let rows=all.filter(r=>r.gap<=th&&(!q||r.name.toLowerCase().includes(q)||r.ticker.toLowerCase().includes(q)));
+  rows.sort((a,b)=>(typeof a[key]==="string"?a[key].localeCompare(b[key]):a[key]-b[key])*dir);
+  const below=rows.filter(r=>r.gap<0).length;
+  $("cnt").textContent=`${rows.length}개 (200주선 아래 ${below}개 · 위로 ${th}% 이내 ${rows.length-below}개) / 전체 ${all.length}개 중`;
+  $("tb").innerHTML=rows.length?rows.map(r=>{
+    const c=r.gap<0?"below":"near",s=(r.gap>0?"+":"")+r.gap.toFixed(1)+"%";
+    return `<tr><td>${r.name}<small>${r.ticker}</small></td><td>${fmt(r.price,r.market)}</td><td>${fmt(r.ma200,r.market)}</td><td class="${c}">${s}</td></tr>`}).join("")
+    :`<tr><td colspan="4" class="empty">조건에 맞는 종목이 없어요. 근접 기준을 넓혀보세요.</td></tr>`;
+  document.querySelectorAll("th").forEach(h=>h.textContent=h.textContent.replace(/ [▲▼]/,"")+(h.dataset.k===key?(dir>0?" ▲":" ▼"):""));
+}
+document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>{mk=b.dataset.m;document.querySelectorAll(".tabs button").forEach(x=>x.setAttribute("aria-pressed",x===b));render()});
+document.querySelectorAll("th").forEach(h=>{const f=()=>{dir=key===h.dataset.k?-dir:1;key=h.dataset.k;render()};h.onclick=f;h.onkeydown=e=>{if(e.key==="Enter")f()}});
+$("th").oninput=render;$("q").oninput=render;
+fetch("data.json?"+Date.now()).then(r=>r.json()).then(d=>{D=d;$("upd").textContent="마지막 업데이트 "+d.updated+" · 주봉 종가 기준";render()})
+ .catch(()=>{$("upd").textContent="data.json이 아직 없어요. GitHub Actions에서 update-data를 한 번 실행해 주세요."});
+</script></body></html>
